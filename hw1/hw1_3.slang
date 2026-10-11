@@ -1,3 +1,5 @@
+// render multiple shapes in renderer
+
 import hw1_common;
 
 [shader("compute")]
@@ -18,6 +20,18 @@ void compute_main(uint2 tid : SV_DispatchThreadID,
         return;
     }
 
-    image[tid] = float4(1.0);
+    // used AI to comment out this line
+    // image[tid] = float4(0.5, 0.5, 0.5, 1.0);
+
     // TODO: your code here
+
+    // used AI for this line
+    image[tid] = float4(background, 1.0);
+    
+    // pixel center
+    float x = tid.x + 0.5;
+    float y = float(height) - float(tid.y) - 0.5;
+    float2 q = float2(x,y);
+
+
 }
