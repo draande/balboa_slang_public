@@ -182,22 +182,83 @@ def parse_scene(filename : str) -> Scene:
                  quadratic_beziers,
                  points)
 
+# I used AI to help implement the transformation matrices and get the
+# multiplication order right. Each transformation is applied in the
+# order listed, with the next matrix multiplied on the left. 
 def compose_transformation(transforms):
     """
         Given a list of transformations, compose them into a matrix.
     """
-
     F = np.eye(3, dtype=np.float32)
 
     for transform in transforms:
-        pass
-        # TODO: your code here
+        matrix = np.eye(3, dtype=np.float32)
+
+        if "scale" in transform:
+            x, y = transform["scale"]
+            matrix[0, 0] = x
+            matrix[1, 1] = y
+
+        elif "shear_x" in transform:
+            matrix[0, 1] = transform["shear_x"][0]
+
+        elif "shear_y" in transform:
+            matrix[1, 0] = transform["shear_y"][0]
+
+        elif "rotate" in transform:
+            angle = transform["rotate"][0]
+            angle = math.radians(angle)
+
+            c = math.cos(angle)
+            s = math.sin(angle)
+
+            matrix[0, 0] = c
+            matrix[0, 1] = -s
+            matrix[1, 0] = s
+            matrix[1, 1] = c
+
+        elif "translate" in transform:
+            x, y = transform["translate"]
+            matrix[0, 2] = x
+            matrix[1, 2] = y
+
+        # next transformation goes on the left
+        F = matrix @ F
 
     return F
 
 def interpolate_transformation(transform_keyframes, t):
     # TODO: your code here
+    first = transform_keyframes[0]
+    last = transform_keyframes[-1]
 
+    if t <= first["time"]:
+        return first["transform"]
+
+    if t >= last["time"]:
+        return last["transform"]
+    
+    for i in range(len(transform_keyframes) - 1):
+        start = transform_keyframes[i]
+        end = transform_keyframes[i + 1]
+
+        if start["time"] <= t < end["time"]:
+            duration = end["time"] - start["time"]
+            weight = (t - start["time"]) / duration
+            result = []
+
+            for a, b in zip(start["transform"], end["transform"]):
+                for name in a:
+                    values = []
+
+                    for x, y in zip(a[name], b[name]):
+                        value = (1 - weight) * x + weight * y
+                        values.append(value)
+
+                    result.append({name: values})
+
+            return result
+    
     # Should never happen?
     assert False
 

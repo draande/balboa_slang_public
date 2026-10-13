@@ -132,6 +132,8 @@ void compute_main(uint2 tid : SV_DispatchThreadID,
             }
         }
 
+        // add circles at joining vertices for round corners
+        // skipping open endpoints to keep their caps flat
         int joins = num_polyline;
 
         while (joins > 0) {

@@ -1,3 +1,14 @@
+# Name
+Hemendra Ande
+
+# TSS
+200335559
+
+# Scenes
+All of the scenes are in balboa_slang_public\outputs. I didn't do any bonues things but I wanted to mention that the scene I created is called my_scene.png in the same outputs folder. This was sucha cool project thank you so much!
+
+
+
 # balboa
 UCSD CSE 167 codebase
 https://cseweb.ucsd.edu/~tzli/cse167/
