@@ -2,6 +2,15 @@
 for sampling, transformations, circles, polylines, alpha blending, etc.
 Pretty much the only new stuff is Bezier fill and stroke.*/
 
+/* adds quadratic bezier curves...
+    use start, control, and end points to define each curve
+    solve ray intersections for fill
+    count upward and downward crossings like before
+    find closest points on the curve for stroke
+    color if within half stroke width
+    round joins and keep open endpoints flat
+    use the same sampling, transformations, and blending as 1.7 */
+
 import hw1_common;
 
 [shader("compute")]
@@ -155,11 +164,13 @@ void compute_main(uint2 tid : SV_DispatchThreadID,
                 }
 
                 else if (shape.type == ShapeType.QuadraticBezier) {
+                    // get this shape's bezier path
                     QuadraticBezier path = quadratic_beziers[shape.index];
 
                     int begin = path.pts_begin;
                     int count = path.pts_end - begin;
 
+                    // need start, control, and end points
                     if (count < 3) { continue; }
 
                     // open paths end at last point
@@ -176,11 +187,15 @@ void compute_main(uint2 tid : SV_DispatchThreadID,
 
                         if (next == count) { next = 0; }
 
+                        // p0: start, p1: control, p2: end
+                        // p1 pulls the curve, it isn't usually on the curve
                         float2 p0 = points[begin + start];
                         float2 p1 = points[begin + start + 1];
                         float2 p2 = points[begin + next];
 
+                        // rewrite the bezier equation as a polynomial
                         // curve(t) = a*t*t + b*t + p0
+                        // t = 0 is the start, t = 1 is the end
                         float2 a = p0 - 2.0 * p1 + p2;
                         float2 b = 2.0 * (p1 - p0);
 
@@ -190,6 +205,8 @@ void compute_main(uint2 tid : SV_DispatchThreadID,
 
                             // solve a.y*t*t + b.y*t + p0.y - q.y = 0
                             if (a.y == 0.0) {
+                                // no quadratic term, solve a linear equation
+                                // if b.y is also zero, there is no vertical crossing
                                 if (b.y != 0.0) {
                                     roots.x = (q.y - p0.y) / b.y;
                                     numRoots = 1;
@@ -197,6 +214,7 @@ void compute_main(uint2 tid : SV_DispatchThreadID,
                             } 
                             
                             else {
+                                // up to 2 roots
                                 if (solve_quadratic(a.y, b.y, p0.y - q.y, roots)) {
                                     numRoots = 2;
                                     // repeated root is one intersection
@@ -208,9 +226,11 @@ void compute_main(uint2 tid : SV_DispatchThreadID,
 
                             for (int k = 0; k < numRoots; k++) {
                                 float t = roots[k];
-                                // intersects only
+                                
+                                // only inside
                                 if (t < 0.0 || t > 1.0) { continue; }
 
+                                // plug t into the curve to get intersection position
                                 float2 hit = (a * t + b) * t + p0;
                                 float s = hit.x - q.x;
 
@@ -219,6 +239,8 @@ void compute_main(uint2 tid : SV_DispatchThreadID,
                                 // crossing direction
                                 float tangentY = 2.0 * a.y * t + b.y;
 
+                                // derivative gives the curve's direction at t
+                                // positive y means upward, negative means downward
                                 if (tangentY == 0.0) {
                                     // interior tangent touches without crossing
                                     if (t > 0.0) {
@@ -248,9 +270,13 @@ void compute_main(uint2 tid : SV_DispatchThreadID,
                             }
                         }
 
+                        // only check stroke if enabled, not already hit,
+                        // and the stroke has positive width
                         if (shape.use_stroke && !strokeHit && halfWidth > 0.0) {
                             float2 offset = p0 - q;
 
+                            // closest interior points have zero change in
+                            // squared distance as we move along the curve.
                             // (curve(t) - q) dot curve'(t) = 0
                             // c3*t*t*t + c2*t*t + c1*t + c0 = 0
                             float c3 = 2.0 * dot(a, a);
@@ -258,6 +284,7 @@ void compute_main(uint2 tid : SV_DispatchThreadID,
                             float c1 = dot(b, b) + 2.0 * dot(a, offset);
                             float c0 = dot(b, offset);
 
+                            // up to three candidate t values
                             float3 roots = float3(0.0);
                             int numRoots = 0;
 
@@ -290,9 +317,12 @@ void compute_main(uint2 tid : SV_DispatchThreadID,
                             bool first = !path.closed && j == 0;
                             bool last = !path.closed && j == curves - 1;
 
+                            // directions at the curve's start and end
                             float2 startTangent = p1 - p0;
                             float2 endTangent = p2 - p1;
 
+                            // if control point matches an endpoint,
+                            // use the start-to-end direction instead
                             if (length(startTangent) == 0.0) {
                                 startTangent = p2 - p0;
                             }
@@ -301,12 +331,15 @@ void compute_main(uint2 tid : SV_DispatchThreadID,
                             }
 
                             // clip the open endpoint disks to keep caps flat
+                            // at the first point, only keep the forward half
+                            // internal joins keep the full circle
                             if (length(q - p0) <= halfWidth) {
                                 if (!first || dot(q - p0, startTangent) >= 0.0) {
                                     strokeHit = true;
                                 }
                             }
 
+                            // last point, only keep the backward half
                             if (length(q - p2) <= halfWidth) {
                                 if (!last || dot(q - p2, endTangent) <= 0.0) {
                                     strokeHit = true;
@@ -337,10 +370,13 @@ void compute_main(uint2 tid : SV_DispatchThreadID,
                 }
             }
 
+            // bg fills whatever is left after all the shapes have been drawn
             color += remaining * background;
+            // add this sample's color to the total for this pixel
             total += color;
         }
     }
 
+    // n * n samples were checked, divide to get their average color
     image[tid] = float4(total / float(n * n), 1.0);
 }
